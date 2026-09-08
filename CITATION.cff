@@ -29,5 +29,5 @@ keywords:
   - bioinformatics workflow
 # `version` + `date-released` are bumped automatically by release-please on each
 # release (via the annotations below) — do not edit them by hand.
-version: "0.1.0" # x-release-please-version
+version: "0.2.0" # x-release-please-version
 date-released: "2026-09-08" # x-release-please-date
