@@ -1,0 +1,44 @@
+# Spatial transcriptomics (Xenium + Visium) — Snakemake Workflow Catalog entry
+# point. The workflow starts from the VENDOR OUTPUT DIRECTORIES (Xenium Onboard
+# Analysis `outs/`, Space Ranger `outs/`): no image processing, no alignment.
+# A single `snakemake --use-conda` run builds every stage in dependency order
+# (unified DAG):
+#
+#   qc_all       per section: load → platform-specific cell/spot QC → plots;
+#                then a cross-sample summary
+#   process_all  normalization → (HVG) → PCA → neighbours → Leiden → UMAP →
+#                marker genes
+#   spatial_all  spatial neighbours graph → neighborhood enrichment →
+#                Moran's I spatially variable genes
+#   report       one self-contained HTML page over every section
+#
+#   snakemake --use-conda --cores 8                  # everything (default)
+#   snakemake --use-conda --cores 8 qc_all           # one stage
+#   snakemake --use-conda --cores 8 process_all
+#   snakemake --use-conda --cores 8 spatial_all
+#
+# Roadmap (not yet implemented): multi-sample integration, cell-type
+# annotation, Visium deconvolution, Visium HD, CosMx/MERSCOPE readers.
+
+from snakemake.utils import min_version
+
+min_version("8.0")
+
+
+configfile: "config/config.yaml"
+
+
+include: "rules/common.smk"
+include: "rules/qc.smk"
+include: "rules/process.smk"
+include: "rules/spatial.smk"
+include: "rules/report.smk"
+
+
+rule all:
+    default_target: True
+    input:
+        rules.qc_all.input,
+        rules.process_all.input,
+        rules.spatial_all.input,
+        REPORT_TARGETS,

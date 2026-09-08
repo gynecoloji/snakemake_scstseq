@@ -1,0 +1,4 @@
+sample_id,platform,path,condition
+xenium_1,xenium,xenium_1,tumor
+visium_1,visium,visium_1,tumor
+visium_2,visium,visium_2,normal

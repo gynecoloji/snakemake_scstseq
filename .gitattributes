@@ -1,0 +1,19 @@
+# ── Language statistics ─────────────────────────────────────────────────
+# Keep generated artifacts and the synthetic test fixtures out of GitHub's
+# language bar so the repo reads as Snakemake/Python.
+images/rulegraph.svg    linguist-generated
+.test/**                linguist-generated
+
+# ── Line endings ────────────────────────────────────────────────────────
+# Normalize all text to LF; shell scripts and Snakemake files MUST stay LF so
+# they work in the Linux containers.
+* text=auto eol=lf
+*.sh        text eol=lf
+*.py        text eol=lf
+*.smk       text eol=lf
+Snakefile   text eol=lf
+Dockerfile  text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.md        text eol=lf
+*.csv       text eol=lf

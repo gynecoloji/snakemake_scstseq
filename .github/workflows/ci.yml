@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Fast checks: formatting, unit tests, DAG/config validation ────────────
+  static:
+    name: Static checks + dry runs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        # snakemake pinned to the version the containers ship (Dockerfile /
+        # apptainer.def), snakefmt + black pinned so the formatting check is
+        # reproducible. anndata/scipy/h5py/pyarrow are what the unit tests need
+        # (the loader and QC modules are deliberately scanpy-free).
+        run: |
+          pip install "snakemake==9.3.2" "snakefmt==0.10.3" "black==24.10.0" \
+            pytest pyyaml jsonschema numpy pandas scipy h5py anndata pyarrow
+
+      - name: Formatting (snakefmt)
+        # Informational, not gated: snakefmt's verdict is not reproducible across
+        # environments, so it must not block merges. It still prints a diff of
+        # anything it would change.
+        continue-on-error: true
+        run: snakefmt --check --diff workflow/
+
+      - name: Unit tests
+        run: python -m pytest tests/ -q
+
+      - name: Stub inputs
+        # Create the vendor files each samples.csv row needs, empty, so the DAG
+        # resolves in a dry run (no rule is executed, so 0-byte files are fine).
+        run: |
+          python - <<'PY'
+          import csv, pathlib
+          FILES = {
+              "xenium": ["cell_feature_matrix.h5", "cells.parquet"],
+              "visium": ["filtered_feature_bc_matrix.h5", "spatial/scalefactors_json.json", "spatial/tissue_positions.csv"],
+          }
+          for r in csv.DictReader(open("config/samples.csv")):
+              p = pathlib.Path(r["path"])
+              p = p if p.is_absolute() else pathlib.Path("data") / p
+              for f in FILES[r["platform"]]:
+                  (p / f).parent.mkdir(parents=True, exist_ok=True)
+                  (p / f).touch()
+          PY
+
+      - name: Dry run (DAG builds + config validates)
+        run: snakemake -s workflow/Snakefile -n --cores 1
+
+      - name: Dry run (each stage)
+        run: |
+          snakemake -s workflow/Snakefile -n --cores 1 qc_all
+          snakemake -s workflow/Snakefile -n --cores 1 process_all
+          snakemake -s workflow/Snakefile -n --cores 1 spatial_all
+
+      - name: Dry run (report disabled drops build_report from the default target)
+        run: |
+          python - <<'PY'
+          import yaml
+          cfg = yaml.safe_load(open("config/config.yaml"))
+          cfg["report"]["enabled"] = False
+          yaml.safe_dump(cfg, open("ci-noreport.yaml", "w"))
+          PY
+          if snakemake -s workflow/Snakefile -n --cores 1 --configfile ci-noreport.yaml | grep -q "build_report"; then
+            echo "build_report still scheduled with report.enabled=false" >&2; exit 1
+          fi
+
+      - name: Dry run (executable test case)
+        run: snakemake -s workflow/Snakefile -d .test -n --cores 1
+
+      - name: Lint (informational)
+        continue-on-error: true
+        run: snakemake -s workflow/Snakefile --lint
+
+  # ── The executable test case: really runs, then asserts the numbers ───────
+  integration:
+    name: Executable test case (.test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          channels: conda-forge,bioconda
+          channel-priority: strict
+          activate-environment: driver
+
+      - name: Install the pinned driver
+        shell: bash -el {0}
+        # numpy + h5py generate the synthetic sections; pandas is what the
+        # Snakefile imports at parse time and what assert_outputs.py reads with.
+        run: conda install -y "snakemake=9.3.2" numpy pandas h5py
+
+      - name: Cache the per-rule conda environment
+        uses: actions/cache@v4
+        with:
+          path: .snakemake-conda
+          key: sdm-conda-${{ runner.os }}-${{ hashFiles('workflow/envs/*.yaml') }}
+
+      - name: Generate the synthetic sections
+        shell: bash -el {0}
+        run: python .test/make_testdata.py
+
+      - name: Run the workflow end to end
+        shell: bash -el {0}
+        run: |
+          snakemake -s workflow/Snakefile \
+            -d .test --sdm conda --conda-prefix "$PWD/.snakemake-conda" \
+            --cores 2
+
+      - name: Assert the outputs
+        shell: bash -el {0}
+        # Values, not just exit codes: planted low-quality cells and high-mito
+        # spots dropped for the right reason, domains recovered by Leiden,
+        # domain markers first in Moran's I, self-enriched neighborhoods.
+        run: python .test/assert_outputs.py
+
+      - name: Build the Snakemake report
+        shell: bash -el {0}
+        # Absolute --report path: with `-d .test` the working dir is already
+        # .test, so a relative ".test/report.zip" would resolve to
+        # .test/.test/report.zip. $PWD is the repo root at the start of this step.
+        run: |
+          snakemake -s workflow/Snakefile -d .test --report "$PWD/.test/report.zip"
+
+      - name: Upload report + logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            .test/report.zip
+            .test/results/report/scstseq_report.html
+            .test/logs/
+          retention-days: 7

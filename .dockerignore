@@ -1,0 +1,21 @@
+# Keep the Docker build context small: exclude large/generated data.
+# (Vendor output directories and results are mounted at runtime, not copied
+# into the image.)
+
+.git
+.gitignore
+.snakemake
+.snakemake-conda
+.superpowers
+.test
+data
+results
+logs
+docs
+images
+tests/.pytest_cache
+**/__pycache__
+*.pdf
+*.ipynb
+*.svg
+*.sif

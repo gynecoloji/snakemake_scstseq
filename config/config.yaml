@@ -1,0 +1,130 @@
+# ============================================================================
+# Spatial transcriptomics (Xenium + Visium) pipeline configuration
+# ----------------------------------------------------------------------------
+# The workflow starts from the VENDOR OUTPUT DIRECTORIES (Xenium Onboard
+# Analysis `outs/`, Space Ranger `outs/`) — no image processing, no
+# alignment. All paths are relative to the Snakemake working directory (the
+# project root, /workflow inside the container). Every parameter is defined,
+# typed and defaulted in workflow/schemas/config.schema.yaml (the single
+# source of truth); this file ships working defaults with a comment on each.
+# Override any value at runtime with:
+#   snakemake --configfile path/to/custom.yaml
+#   snakemake --config key=value
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Sample sheet (columns: sample_id, platform, path[, condition]).
+# `platform` is xenium | visium; `path` is the vendor output directory,
+# relative to paths.data_dir unless absolute.
+# ---------------------------------------------------------------------------
+samples_table: "config/samples.csv"
+
+# ---------------------------------------------------------------------------
+# Input / output layout
+# ---------------------------------------------------------------------------
+paths:
+  data_dir: "data"           # per-sample vendor output directories live here
+  results_dir: "results"     # all pipeline outputs
+  logs_dir: "logs"           # all log files
+
+# ---------------------------------------------------------------------------
+# Species metadata + the gene-NAME regexes used for the QC subsets
+# (human: ^MT- / ^RP[SL] / ^HB[^P]; mouse: ^mt- / ^Rp[sl] / ^Hb[^p]).
+# Xenium panels rarely contain these genes; the metrics then simply read 0.
+# ---------------------------------------------------------------------------
+genome:
+  species: "Homo_sapiens"
+  mito_pattern: "^MT-"
+  ribo_pattern: "^RP[SL]"
+  hb_pattern: "^HB[^P]"
+
+# ---------------------------------------------------------------------------
+# Cell / spot filtering, per platform. Every threshold uses 0 = disabled.
+# A cell is dropped by the FIRST rule it fails, in the order listed here; the
+# per-cell TSV records that reason and the summary counts them.
+# ---------------------------------------------------------------------------
+qc:
+  xenium:                    # single cells; counts are transcripts per cell
+    min_counts: 10           # min transcripts per cell
+    max_counts: 0            # max transcripts per cell (0 = no cap)
+    min_genes: 5             # min detected genes per cell
+    min_area: 0              # min cell area (µm²); 0 = off
+    max_area: 0              # max cell area (µm²); 0 = off (catches merged segmentations)
+    max_control_frac: 0      # max fraction of control-probe/codeword counts per cell; 0 = off
+    min_cells: 5             # keep genes detected in >= this many kept cells
+  visium:                    # 55 µm spots; counts are UMIs per spot
+    min_counts: 500          # min UMIs per spot
+    max_counts: 0            # max UMIs per spot (0 = no cap)
+    min_genes: 250           # min detected genes per spot
+    max_pct_mt: 30           # max % mitochondrial UMIs per spot; 0 = off
+    max_pct_hb: 0            # max % hemoglobin UMIs per spot (blood contamination); 0 = off
+    min_cells: 10            # keep genes detected in >= this many kept spots
+
+# ---------------------------------------------------------------------------
+# Normalization → (HVG) → PCA → neighbors → Leiden → UMAP, per platform.
+# Xenium panels are targeted (a few hundred to 5k genes), so every gene is
+# used and counts are scaled to a fixed small target; Visium is whole-
+# transcriptome, so HVGs are selected (seurat_v3 on raw counts) and scaled.
+# ---------------------------------------------------------------------------
+processing:
+  xenium:
+    target_sum: 100          # normalize_total target (0 = median of totals)
+    hvg: false               # select highly variable genes before PCA
+    n_top_genes: 0           # HVG count when hvg is true
+    scale: false             # z-score genes (clipped at 10) before PCA
+    n_pcs: 30                # principal components (capped at n_genes - 1)
+    n_neighbors: 15          # kNN graph size for Leiden/UMAP
+    resolution: 0.5          # Leiden resolution
+  visium:
+    target_sum: 0
+    hvg: true
+    n_top_genes: 2000
+    scale: true
+    n_pcs: 30
+    n_neighbors: 15
+    resolution: 0.5
+  markers:
+    method: "wilcoxon"       # rank_genes_groups method: wilcoxon | t-test | t-test_overestim_var | logreg
+    n_top: 25                # markers reported per cluster
+  seed: 0                    # random seed for PCA/neighbors/Leiden/UMAP
+
+# ---------------------------------------------------------------------------
+# Spatial neighbors graph + statistics (squidpy), per platform.
+# Xenium: generic coordinates (µm) → k nearest neighbours, or Delaunay, or a
+# fixed radius. Visium: the hexagonal spot grid → 6 neighbours per ring.
+# ---------------------------------------------------------------------------
+spatial:
+  xenium:
+    coord_type: "generic"
+    n_neighs: 10             # kNN size (ignored when radius > 0 or delaunay)
+    delaunay: false          # Delaunay triangulation instead of kNN
+    radius: 0                # connect every cell within this distance (µm); 0 = off
+  visium:
+    coord_type: "grid"
+    n_neighs: 6              # hexagonal grid: 6 (Visium HD square bins: 4)
+    n_rings: 1               # rings of neighbours to connect
+  nhood_enrichment:
+    n_perms: 1000            # permutations for the cluster neighborhood-enrichment z-scores
+  moran:
+    n_perms: 100             # permutations for Moran's I p-values (0 = analytic only)
+    n_top: 50                # spatially variable genes listed in the report
+    plot_top: 6              # top SVGs drawn on the section
+
+# ---------------------------------------------------------------------------
+# Self-contained cross-sample HTML report (part of the default target)
+# ---------------------------------------------------------------------------
+report:
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# Threads per rule
+# ---------------------------------------------------------------------------
+threads:
+  load_sample:     1
+  qc_filter:       1
+  qc_plots:        1
+  qc_summary:      1
+  process_sample:  4
+  cluster_markers: 2
+  spatial_stats:   4
+  build_report:    1

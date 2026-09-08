@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this workflow, please cite it using these metadata."
+title: "snakemake_scstseq: a Snakemake workflow for single-cell (Xenium) and spot-level (Visium) spatial transcriptomics"
+abstract: >-
+  A Snakemake workflow for spatial transcriptomics that reads 10x Genomics
+  Xenium (single-cell, imaging-based) and Visium (spot-level, sequencing-based)
+  vendor output directories and produces per-section QC with platform-specific
+  thresholds, normalization, clustering and marker genes (scanpy), a spatial
+  neighbors graph with neighborhood enrichment and Moran's I spatially variable
+  genes (squidpy), and a self-contained cross-sample HTML report. Containerized
+  with Docker and Apptainer.
+type: software
+authors:
+  - given-names: "Ji"
+    family-names: "Wang"
+    orcid: "https://orcid.org/0000-0003-3443-5857"
+repository-code: "https://github.com/gynecoloji/snakemake_scstseq"
+url: "https://github.com/gynecoloji/snakemake_scstseq"
+license: MIT
+keywords:
+  - spatial transcriptomics
+  - Xenium
+  - Visium
+  - Snakemake
+  - scanpy
+  - squidpy
+  - quality control
+  - spatially variable genes
+  - bioinformatics workflow
+# `version` + `date-released` are bumped automatically by release-please on each
+# release (via the annotations below) — do not edit them by hand.
+version: "0.1.0" # x-release-please-version
+date-released: "2026-09-08" # x-release-please-date

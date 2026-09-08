@@ -1,0 +1,30 @@
+# The single per-rule tool environment for the spatial-transcriptomics workflow.
+#
+# Provides: scanpy (loading, QC, normalization, PCA/neighbors/Leiden/UMAP,
+# marker genes), squidpy (spatial neighbors graph, neighborhood enrichment,
+# Moran's I), anndata/h5py/pyarrow (10x HDF5 + parquet/CSV readers), and
+# matplotlib/seaborn for the plots. Every `script:` rule runs in this env.
+#
+# Pinned by major.minor (not build string) so the solve stays reproducible but
+# still picks up bug-fix releases. conda-forge + bioconda only (Bioconda's
+# guidance; no `defaults`), and installable under strict channel priority.
+name: py-scst
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - scanpy=1.11
+  - squidpy=1.8
+  - anndata>=0.10
+  - numpy
+  - pandas
+  - scipy
+  - h5py
+  - pyarrow
+  - leidenalg
+  - python-igraph
+  - scikit-misc
+  - matplotlib-base
+  - seaborn
+  - pyyaml

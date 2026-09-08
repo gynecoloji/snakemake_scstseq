@@ -1,0 +1,22 @@
+# Snakemake Workflow Catalog metadata.
+# https://snakemake.github.io/snakemake-workflow-catalog/
+
+usage:
+  mandatory-flags:
+    desc: >
+      Always run with --use-conda so every rule gets the pinned tool
+      environment (workflow/envs/py-scst.yaml: scanpy + squidpy). A single
+      `snakemake --use-conda` runs the QC stage (platform-specific cell/spot
+      filtering), the processing stage (normalization, PCA, Leiden clusters,
+      UMAP, marker genes), the spatial stage (spatial neighbors graph,
+      neighborhood enrichment, Moran's I spatially variable genes) and the
+      HTML report; run subsets with the qc_all / process_all / spatial_all
+      targets. Before running, place the Xenium or Space Ranger output
+      directories under data/ and list them in config/samples.csv with their
+      platform (see the README).
+    flags: "--use-conda"
+  software-stack-deployment:
+    conda: true
+    apptainer: true
+    apptainer+conda: true
+  report: false

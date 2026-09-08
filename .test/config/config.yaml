@@ -1,0 +1,85 @@
+# .test copy of the pipeline configuration: identical structure to
+# config/config.yaml, with thresholds and sizes tuned to the miniature
+# synthetic sections (see .test/README.md). Used with `snakemake -d .test`.
+
+samples_table: "config/samples.csv"
+
+paths:
+  data_dir: "data"
+  results_dir: "results"
+  logs_dir: "logs"
+
+genome:
+  species: "Homo_sapiens"
+  mito_pattern: "^MT-"
+  ribo_pattern: "^RP[SL]"
+  hb_pattern: "^HB[^P]"
+
+qc:
+  xenium:
+    min_counts: 40           # normal cells ~170 transcripts; planted low-quality ~9
+    max_counts: 0
+    min_genes: 10
+    min_area: 0
+    max_area: 0
+    max_control_frac: 0
+    min_cells: 1
+  visium:
+    min_counts: 60           # normal spots ~170 UMIs; planted low-quality ~9
+    max_counts: 0
+    min_genes: 20
+    max_pct_mt: 20           # planted high-mito spots are > 50 % mito
+    max_pct_hb: 0
+    min_cells: 1
+
+processing:
+  xenium:
+    target_sum: 100
+    hvg: false
+    n_top_genes: 0
+    scale: false
+    n_pcs: 15                # 60 genes
+    n_neighbors: 10
+    resolution: 0.3
+  visium:
+    target_sum: 0
+    hvg: true
+    n_top_genes: 40          # 40 of the 60 genes
+    scale: true
+    n_pcs: 15
+    n_neighbors: 10
+    resolution: 0.3
+  markers:
+    method: "wilcoxon"
+    n_top: 10
+  seed: 0
+
+spatial:
+  xenium:
+    coord_type: "generic"
+    n_neighs: 8
+    delaunay: false
+    radius: 0
+  visium:
+    coord_type: "grid"
+    n_neighs: 6
+    n_rings: 1
+  nhood_enrichment:
+    n_perms: 200
+  moran:
+    n_perms: 50
+    n_top: 20
+    plot_top: 3
+
+report:
+  enabled: true
+
+threads:
+  load_sample:     1
+  qc_filter:       1
+  qc_plots:        1
+  qc_summary:      1
+  process_sample:  2
+  cluster_markers: 1
+  spatial_stats:   2
+  build_report:    1

@@ -1,0 +1,162 @@
+"$schema": "http://json-schema.org/draft-07/schema#"
+title: Spatial transcriptomics (Xenium + Visium) pipeline — configuration
+description: >-
+  Parameters for the spatial-transcriptomics Snakemake workflow: platform-
+  specific cell/spot QC, normalization + clustering + marker genes (scanpy),
+  spatial neighbours graph + neighborhood enrichment + Moran's I spatially
+  variable genes (squidpy), and a self-contained HTML report. Paths are
+  relative to the working directory (the repo root, /workflow inside the
+  container).
+type: object
+
+properties:
+  samples_table:
+    type: string
+    description: Path to the sample sheet CSV (columns sample_id, platform, path, optional condition).
+    default: config/samples.csv
+
+  paths:
+    type: object
+    description: Input/output directory layout.
+    properties:
+      data_dir:    { type: string, default: data, description: "Directory holding the per-sample vendor output directories." }
+      results_dir: { type: string, default: results, description: "Directory for all pipeline outputs." }
+      logs_dir:    { type: string, default: logs, description: "Directory for all per-rule logs." }
+    required: [data_dir, results_dir, logs_dir]
+
+  genome:
+    type: object
+    description: Species metadata and the gene-name regexes used for the QC subsets.
+    properties:
+      species:      { type: string, default: Homo_sapiens }
+      mito_pattern: { type: string, default: "^MT-", description: "Regex on gene names marking mitochondrial genes (mouse: ^mt-)." }
+      ribo_pattern: { type: string, default: "^RP[SL]", description: "Regex on gene names marking ribosomal-protein genes (mouse: ^Rp[sl])." }
+      hb_pattern:   { type: string, default: "^HB[^P]", description: "Regex on gene names marking hemoglobin genes (mouse: ^Hb[^p])." }
+    required: [mito_pattern, ribo_pattern, hb_pattern]
+
+  qc:
+    type: object
+    description: Cell/spot filtering thresholds per platform. Every threshold uses 0 = disabled; a cell is dropped by the first rule it fails.
+    properties:
+      xenium:
+        type: object
+        description: Thresholds for Xenium cells (counts are transcripts per cell).
+        properties:
+          min_counts:       { type: number, minimum: 0, default: 10, description: "Minimum transcripts per cell." }
+          max_counts:       { type: number, minimum: 0, default: 0, description: "Maximum transcripts per cell (0 = no cap)." }
+          min_genes:        { type: integer, minimum: 0, default: 5, description: "Minimum detected genes per cell." }
+          min_area:         { type: number, minimum: 0, default: 0, description: "Minimum cell area in µm² (0 = off)." }
+          max_area:         { type: number, minimum: 0, default: 0, description: "Maximum cell area in µm² (0 = off)." }
+          max_control_frac: { type: number, minimum: 0, maximum: 1, default: 0, description: "Maximum fraction of control-probe/codeword counts per cell (0 = off)." }
+          min_cells:        { type: integer, minimum: 0, default: 5, description: "Keep genes detected in at least this many kept cells." }
+        required: [min_counts, max_counts, min_genes, min_area, max_area, max_control_frac, min_cells]
+      visium:
+        type: object
+        description: Thresholds for Visium spots (counts are UMIs per spot).
+        properties:
+          min_counts: { type: number, minimum: 0, default: 500, description: "Minimum UMIs per spot." }
+          max_counts: { type: number, minimum: 0, default: 0, description: "Maximum UMIs per spot (0 = no cap)." }
+          min_genes:  { type: integer, minimum: 0, default: 250, description: "Minimum detected genes per spot." }
+          max_pct_mt: { type: number, minimum: 0, maximum: 100, default: 30, description: "Maximum percent mitochondrial UMIs per spot (0 = off)." }
+          max_pct_hb: { type: number, minimum: 0, maximum: 100, default: 0, description: "Maximum percent hemoglobin UMIs per spot (0 = off)." }
+          min_cells:  { type: integer, minimum: 0, default: 10, description: "Keep genes detected in at least this many kept spots." }
+        required: [min_counts, max_counts, min_genes, max_pct_mt, max_pct_hb, min_cells]
+    required: [xenium, visium]
+
+  processing:
+    type: object
+    description: Normalization, dimensionality reduction and clustering, per platform.
+    properties:
+      xenium:
+        type: object
+        description: Processing of Xenium cells (targeted panel — every gene is used by default).
+        properties:
+          target_sum:  { type: number, minimum: 0, default: 100, description: "normalize_total target per cell (0 = median of the totals)." }
+          hvg:         { type: boolean, default: false, description: "Select highly variable genes (seurat_v3 on counts) before PCA." }
+          n_top_genes: { type: integer, minimum: 0, default: 0, description: "Number of HVGs when hvg is true." }
+          scale:       { type: boolean, default: false, description: "z-score genes (clipped at 10) before PCA." }
+          n_pcs:       { type: integer, minimum: 2, default: 30, description: "Principal components (capped at n_genes - 1)." }
+          n_neighbors: { type: integer, minimum: 2, default: 15, description: "kNN graph size for Leiden/UMAP." }
+          resolution:  { type: number, minimum: 0, default: 0.5, description: "Leiden resolution." }
+        required: [target_sum, hvg, n_top_genes, scale, n_pcs, n_neighbors, resolution]
+      visium:
+        type: object
+        description: Processing of Visium spots (whole transcriptome — HVGs are selected by default).
+        properties:
+          target_sum:  { type: number, minimum: 0, default: 0, description: "normalize_total target per spot (0 = median of the totals)." }
+          hvg:         { type: boolean, default: true, description: "Select highly variable genes (seurat_v3 on counts) before PCA." }
+          n_top_genes: { type: integer, minimum: 0, default: 2000, description: "Number of HVGs when hvg is true." }
+          scale:       { type: boolean, default: true, description: "z-score genes (clipped at 10) before PCA." }
+          n_pcs:       { type: integer, minimum: 2, default: 30, description: "Principal components (capped at n_genes - 1)." }
+          n_neighbors: { type: integer, minimum: 2, default: 15, description: "kNN graph size for Leiden/UMAP." }
+          resolution:  { type: number, minimum: 0, default: 0.5, description: "Leiden resolution." }
+        required: [target_sum, hvg, n_top_genes, scale, n_pcs, n_neighbors, resolution]
+      markers:
+        type: object
+        description: Per-cluster marker-gene detection (scanpy rank_genes_groups).
+        properties:
+          method:
+            type: string
+            enum: [wilcoxon, t-test, t-test_overestim_var, logreg]
+            default: wilcoxon
+          n_top: { type: integer, minimum: 1, default: 25, description: "Markers reported per cluster." }
+        required: [method, n_top]
+      seed: { type: integer, minimum: 0, default: 0, description: "Random seed for PCA/neighbours/Leiden/UMAP." }
+    required: [xenium, visium, markers, seed]
+
+  spatial:
+    type: object
+    description: Spatial neighbours graph and statistics (squidpy).
+    properties:
+      xenium:
+        type: object
+        description: Graph construction for Xenium cells (generic coordinates in µm).
+        properties:
+          coord_type: { type: string, enum: [generic], default: generic }
+          n_neighs:   { type: integer, minimum: 1, default: 10, description: "k nearest neighbours (ignored when radius > 0 or delaunay is true)." }
+          delaunay:   { type: boolean, default: false, description: "Use a Delaunay triangulation instead of kNN." }
+          radius:     { type: number, minimum: 0, default: 0, description: "Connect every cell within this distance in µm (0 = off)." }
+        required: [coord_type, n_neighs, delaunay, radius]
+      visium:
+        type: object
+        description: Graph construction for Visium spots (hexagonal grid).
+        properties:
+          coord_type: { type: string, enum: [grid], default: grid }
+          n_neighs:   { type: integer, enum: [4, 6, 8], default: 6, description: "Neighbours per ring: 6 for the Visium hex grid, 4 or 8 for square bins." }
+          n_rings:    { type: integer, minimum: 1, default: 1, description: "Rings of neighbours to connect." }
+        required: [coord_type, n_neighs, n_rings]
+      nhood_enrichment:
+        type: object
+        properties:
+          n_perms: { type: integer, minimum: 1, default: 1000, description: "Permutations for the cluster neighborhood-enrichment z-scores." }
+        required: [n_perms]
+      moran:
+        type: object
+        properties:
+          n_perms:  { type: integer, minimum: 0, default: 100, description: "Permutations for Moran's I p-values (0 = analytic p-values only)." }
+          n_top:    { type: integer, minimum: 1, default: 50, description: "Spatially variable genes listed in the report." }
+          plot_top: { type: integer, minimum: 0, default: 6, description: "Top SVGs drawn on the section (0 = no plot panels)." }
+        required: [n_perms, n_top, plot_top]
+    required: [xenium, visium, nhood_enrichment, moran]
+
+  report:
+    type: object
+    properties:
+      enabled: { type: boolean, default: true, description: "Build results/report/scstseq_report.html as part of the default target." }
+    required: [enabled]
+
+  threads:
+    type: object
+    description: Threads per rule.
+    properties:
+      load_sample:     { type: integer, minimum: 1, default: 1 }
+      qc_filter:       { type: integer, minimum: 1, default: 1 }
+      qc_plots:        { type: integer, minimum: 1, default: 1 }
+      qc_summary:      { type: integer, minimum: 1, default: 1 }
+      process_sample:  { type: integer, minimum: 1, default: 4 }
+      cluster_markers: { type: integer, minimum: 1, default: 2 }
+      spatial_stats:   { type: integer, minimum: 1, default: 4 }
+      build_report:    { type: integer, minimum: 1, default: 1 }
+    required: [load_sample, qc_filter, qc_plots, qc_summary, process_sample, cluster_markers, spatial_stats, build_report]
+
+required: [samples_table, paths, genome, qc, processing, spatial, report, threads]
