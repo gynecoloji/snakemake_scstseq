@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/gynecoloji/snakemake_scstseq/compare/v0.2.0...v0.3.0) (2026-09-09)
+
+
+### Added
+
+* **impute:** opt-in MAGIC / ALRA / scVI imputation stage ([9eaf0b1](https://github.com/gynecoloji/snakemake_scstseq/commit/9eaf0b1141abffa025562662f946afa1a8413a62))
+* **impute:** opt-in MAGIC / ALRA / scVI imputation stage ([a88d4f6](https://github.com/gynecoloji/snakemake_scstseq/commit/a88d4f67bb728b5262a0940832321d0b86efca57))
+
 ## [0.2.0](https://github.com/gynecoloji/snakemake_scstseq/compare/v0.1.0...v0.2.0) (2026-09-08)
 
 
