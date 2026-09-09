@@ -71,6 +71,27 @@ spatial:
     n_top: 20
     plot_top: 3
 
+imputation:
+  methods: ["magic", "alra", "scvi"]
+  genes: "hvg"               # Visium: the 40 HVGs; Xenium: falls back to all 60 genes
+  plot_top: 3
+  magic:
+    knn: 5
+    t: 3
+    n_pca: 100               # > n_genes, so no PCA step on these tiny panels
+    decay: 1
+  alra:
+    k: 0
+    k_max: 100
+    quantile: 0.001
+  scvi:
+    n_latent: 5
+    n_layers: 1
+    n_hidden: 64
+    max_epochs: 30           # keep CPU training seconds-fast on .test data
+    library_size: 0
+    gpu: false
+
 report:
   enabled: true
 
@@ -83,3 +104,5 @@ threads:
   cluster_markers: 1
   spatial_stats:   2
   build_report:    1
+  impute:          2
+  impute_summary:  1

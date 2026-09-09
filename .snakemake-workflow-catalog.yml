@@ -11,7 +11,8 @@ usage:
       UMAP, marker genes), the spatial stage (spatial neighbors graph,
       neighborhood enrichment, Moran's I spatially variable genes) and the
       HTML report; run subsets with the qc_all / process_all / spatial_all
-      targets. Before running, place the Xenium or Space Ranger output
+      targets, and the opt-in imputation of the measured genes (MAGIC / ALRA /
+      scVI) with impute_all (scVI uses workflow/envs/py-scvi.yaml). Before running, place the Xenium or Space Ranger output
       directories under data/ and list them in config/samples.csv with their
       platform (see the README).
     flags: "--use-conda"

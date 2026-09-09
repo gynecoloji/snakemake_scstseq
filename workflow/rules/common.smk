@@ -55,6 +55,10 @@ REPORT_TARGETS = (
     [f"{RESULTS}/report/scstseq_report.html"] if config["report"]["enabled"] else []
 )
 
+# ── Imputation (opt-in stage; see rules/impute.smk) ──────────────────────
+IMPUTE_DIR = f"{RESULTS}/imputed"
+IMPUTE_METHODS = list(config["imputation"]["methods"])
+
 
 # ── Per-sample helpers ──────────────────────────────────────────────────
 def sample_platform(sample):

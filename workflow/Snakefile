@@ -17,6 +17,10 @@
 #   snakemake --use-conda --cores 8 process_all
 #   snakemake --use-conda --cores 8 spatial_all
 #
+# Imputation of the measured genes is an OPT-IN stage (MAGIC / ALRA / scVI,
+# one output set per method in config.imputation.methods):
+#   snakemake --use-conda --cores 8 impute_all
+#
 # Roadmap (not yet implemented): multi-sample integration, cell-type
 # annotation, Visium deconvolution, Visium HD, CosMx/MERSCOPE readers.
 
@@ -33,6 +37,7 @@ include: "rules/qc.smk"
 include: "rules/process.smk"
 include: "rules/spatial.smk"
 include: "rules/report.smk"
+include: "rules/impute.smk"
 
 
 rule all:

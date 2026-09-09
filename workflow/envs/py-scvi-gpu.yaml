@@ -1,0 +1,17 @@
+# CUDA build of the scVI imputation env — baked into scstseq-pipeline-gpu.sif
+# (apptainer-gpu.def) and selected with imputation.scvi.gpu: true.
+# Run the container with `apptainer run --nv` on a GPU node.
+name: py-scvi-gpu
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - scvi-tools=1.4
+  - pytorch-gpu
+  - anndata>=0.10
+  - numpy
+  - pandas
+  - scipy
+  - h5py
+  - matplotlib-base
