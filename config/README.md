@@ -67,5 +67,10 @@ Highlights:
   built (kNN / Delaunay / radius for cells; hexagonal grid rings for spots);
   `spatial.nhood_enrichment.n_perms` and `spatial.moran.*` control the
   permutation tests.
+- `imputation.*` — the opt-in `impute_all` stage: `methods` (any of
+  `magic`, `alra`, `scvi`; one output set each), `genes` (`hvg` with a
+  fallback to all genes on targeted panels, or `all`), and one parameter
+  block per method (`magic.{knn,t,n_pca,decay}`,
+  `alra.{k,k_max,quantile}`, `scvi.{n_latent,n_layers,n_hidden,max_epochs,library_size,gpu}`).
 - `report.enabled` — build the self-contained HTML report as part of `all`.
 - `threads.*` — threads per rule.

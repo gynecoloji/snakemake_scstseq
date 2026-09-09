@@ -13,9 +13,13 @@ downloaded.
 
 ```bash
 python .test/make_testdata.py       # regenerate inputs (optional; they are committed)
-snakemake -s workflow/Snakefile -d .test --sdm conda --cores 2
+snakemake -s workflow/Snakefile -d .test --sdm conda --cores 2 all impute_all
 python .test/assert_outputs.py      # the actual test
 ```
+
+`impute_all` runs the opt-in imputation with all three methods (scVI trained
+for 30 epochs on CPU); `assert_outputs.py` checks those outputs when they
+exist and says so when they do not.
 
 `assert_outputs.py` exits non-zero if any assertion fails. That is what CI gates on.
 
@@ -36,6 +40,7 @@ a constructed one tells you it is *wrong*.
 | domain markers vary in space, housekeeping genes do not | the top-10 Moran's I genes are all domain markers, no housekeeping gene among them, best I > 0.5, housekeeping I < 0.3 |
 | spatially coherent domains | every cluster is self-enriched (positive diagonal) in the neighborhood-enrichment z-scores |
 | three sections | exactly three summary rows; the report has one section per sample with embedded images; the final `.h5ad` carries `obs/leiden`, `obsm/spatial` and the spatial graph |
+| dropouts in the domain markers (Poisson counts) | for each of MAGIC, ALRA and scVI: the domain markers' zero fraction drops, their median observed-vs-imputed correlation is > 0.3, imputed values stay finite and non-negative and still separate the two domains; the imputation summary has one row per section × method |
 
 ## The synthetic dataset
 

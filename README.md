@@ -35,14 +35,42 @@ One `snakemake --use-conda` run builds every stage in dependency order
 | **Processing** | `process_all` | `normalize_total` + `log1p` → HVGs (Visium; Xenium panels use every gene) → optional scaling → PCA → neighbours → **Leiden** → UMAP → **marker genes** per cluster (dotplot + table) |
 | **Spatial** | `spatial_all` | spatial neighbours graph (Xenium: kNN / Delaunay / radius over µm centroids; Visium: hexagonal grid rings) → **neighborhood enrichment** between clusters → **Moran's I** spatially variable genes (permutation p-values, BH-FDR) → top SVGs drawn on the section |
 | **Report** | `all` (default) | one self-contained HTML page: summary table + every figure and top table per section, images embedded, no JavaScript |
+| **Imputation** | `impute_all` (*opt-in*) | denoise / fill in the dropouts of the measured genes with **MAGIC**, **ALRA** and/or **scVI** (one output set per method, all on the log-normalized scale), per-gene before/after statistics, observed-vs-imputed figures of the top spatially variable genes, and a cross-sample summary |
 
 Everything is Python: [scanpy](https://scanpy.readthedocs.io) for I/O, QC and
 clustering, [squidpy](https://squidpy.readthedocs.io) for the spatial
-statistics, in one conda environment (`workflow/envs/py-scst.yaml`).
+statistics, in one conda environment (`workflow/envs/py-scst.yaml`); the
+opt-in scVI imputation has its own environment (`py-scvi.yaml`, or the CUDA
+build `py-scvi-gpu.yaml`).
+
+### Imputation (opt-in)
+
+`snakemake --use-conda --cores 8 impute_all` runs every method listed in
+`imputation.methods` on every section, after the processing and spatial
+stages. All three impute the genes already in the matrix (dropout
+denoising); none imputes genes missing from a Xenium panel.
+
+| method | engine | notes |
+|---|---|---|
+| `magic` | [magic-impute](https://github.com/KrishnaswamyLab/MAGIC) 3.0 (pip-installed by the env's post-deploy script) | diffusion over the expression kNN graph (`knn`, `t`, `n_pca`, `decay`); minutes per section on CPU |
+| `alra` | numpy re-implementation of [ALRA](https://github.com/KlugerLab/ALRA) in `workflow/scripts/alra.py` | rank chosen from the singular-value noise floor, per-gene thresholding and rescaling, observed non-zeros restored; no extra dependency |
+| `scvi` | [scvi-tools](https://scvi-tools.org) | one model per section on the raw counts, `get_normalized_expression` at a fixed library size then `log1p`; latent space kept in `obsm["X_scVI"]`; CPU env by default, CUDA env via `imputation.scvi.gpu: true` + the GPU container |
+
+`imputation.genes: hvg` (default) imputes the highly variable genes and falls
+back to every gene when none were selected (Xenium); `all` imputes every
+gene. Outputs land in `results/imputed/` as `{sample}.{method}.h5ad`
+(restricted to the imputed genes, observed values in X, imputed values in
+`layers["imputed"]`), a per-gene statistics table (zero fraction before and
+after, means, observed-vs-imputed correlation), a figure of the top
+spatially variable genes observed next to imputed, and
+`imputation_summary.tsv` with one row per section and method. Clustering,
+markers and the spatial statistics are always computed on the observed
+values; treat imputed values as a visualization and smoothing aid.
 
 **Roadmap** (not yet implemented): multi-sample integration, cell-type
-annotation (marker scoring / reference mapping), Visium deconvolution, Visium
-HD (its positions file is parquet), CosMx / MERSCOPE readers.
+annotation (marker scoring / reference mapping), Visium deconvolution,
+reference-based imputation of genes outside a Xenium panel, Visium HD (its
+positions file is parquet), CosMx / MERSCOPE readers.
 
 ## Workflow diagram
 
@@ -62,7 +90,11 @@ snakemake -s workflow/Snakefile -d .test --forceall --rulegraph | dot -Tsvg > im
 - The per-rule tool environment (`workflow/envs/py-scst.yaml`: Python 3.12,
   scanpy 1.11, squidpy 1.8, anndata, h5py, pyarrow, leidenalg, igraph,
   matplotlib, seaborn) is created automatically on the first `--use-conda`
-  run.
+  run; its post-deploy script pip-installs `magic-impute` for the opt-in
+  imputation (the conda builds of MAGIC's dependency chain are too old to
+  solve next to scanpy). The scVI env (`py-scvi.yaml`, PyTorch on CPU) is
+  only created when `impute_all` is requested with `scvi` in
+  `imputation.methods`.
 
 ## Input files
 
@@ -119,7 +151,8 @@ per-platform where the platforms differ:
 Every threshold uses `0` = disabled. Shared keys: `genome.*_pattern`
 (mito / ribo / hemoglobin gene-name regexes; switch for mouse),
 `processing.markers`, `processing.seed`, `spatial.nhood_enrichment.n_perms`,
-`spatial.moran.{n_perms,n_top,plot_top}`, `report.enabled`, `threads.*`.
+`spatial.moran.{n_perms,n_top,plot_top}`, `imputation.{methods,genes,magic,alra,scvi}`
+(opt-in stage, see above), `report.enabled`, `threads.*`.
 
 ## Running the pipeline
 
@@ -139,6 +172,7 @@ snakemake -s workflow/Snakefile --use-conda --cores 8                # everythin
 snakemake -s workflow/Snakefile --use-conda --cores 8 qc_all         # one stage
 snakemake -s workflow/Snakefile --use-conda --cores 8 process_all
 snakemake -s workflow/Snakefile --use-conda --cores 8 spatial_all
+snakemake -s workflow/Snakefile --use-conda --cores 8 impute_all     # opt-in imputation
 ```
 
 > **Running from a batch script?** Invoke Snakemake by its **absolute path**
@@ -167,7 +201,8 @@ Docker or Apptainer:
 
 | image | contents | used for |
 |---|---|---|
-| **`gynecoloji/scstseq-pipeline`** | Snakemake + the pre-built `py-scst` conda env | every stage |
+| **`gynecoloji/scstseq-pipeline`** | Snakemake + the pre-built `py-scst` and `py-scvi` (CPU) conda envs | every stage, including CPU imputation |
+| `scstseq-pipeline-gpu.sif` (build from `apptainer-gpu.def`) | the same with the CUDA scVI env | `impute_all` with `imputation.scvi.gpu: true` on a GPU node (`apptainer run --nv …`) |
 
 **Download** — no build required. On HPC (Apptainer / Singularity) a single
 command downloads it and writes a ready-to-run `.sif` in your current
@@ -236,7 +271,14 @@ results/
 ├── spatial/
 │   ├── {sample}.h5ad                       # + obsp["spatial_connectivities"], uns["moranI"], nhood enrichment
 │   └── {sample}/{nhood_enrichment.tsv,nhood_enrichment.png,morans_i.tsv,top_svg_spatial.png}
-└── report/scstseq_report.html              # self-contained cross-sample report
+├── report/scstseq_report.html              # self-contained cross-sample report
+# ── Imputation (opt-in: `snakemake impute_all`) ──
+└── imputed/
+    ├── {sample}.{method}.h5ad              # imputed genes only: observed X + layers["imputed"] (scvi: obsm["X_scVI"])
+    ├── {sample}.{method}_gene_stats.tsv    # per gene: % zeros before/after, means, observed-vs-imputed r
+    ├── {sample}.{method}_run.json          # parameters, runtime, method extras (rank, epochs, ...)
+    ├── plots/{sample}.{method}_observed_vs_imputed.png
+    └── imputation_summary.tsv              # one row per section x method
 ```
 
 Logs go to `logs/<rule>/<sample>.log`.
@@ -248,14 +290,14 @@ snakemake_scstseq/                     # Snakemake Workflow Catalog layout
 ├── config/                            # config.yaml, samples.csv, README.md
 ├── workflow/
 │   ├── Snakefile                      # entry point (unified DAG; targets: qc_all, process_all, spatial_all)
-│   ├── rules/                         # common.smk, qc.smk, process.smk, spatial.smk, report.smk
-│   ├── scripts/                       # one Python script per rule + scst_common.py helpers
-│   ├── envs/py-scst.yaml              # the tool environment
+│   ├── rules/                         # common.smk, qc.smk, process.smk, spatial.smk, report.smk, impute.smk
+│   ├── scripts/                       # one Python script per rule + scst_common.py / scst_impute.py / alra.py helpers
+│   ├── envs/                          # py-scst.yaml (everything), py-scvi.yaml + py-scvi-gpu.yaml (scVI imputation)
 │   └── schemas/config.schema.yaml     # parameter definitions (single source of truth)
 ├── .test/                             # executable test case (synthetic Xenium + Visium sections)
 ├── tests/                             # unit tests (pytest)
 ├── .snakemake-workflow-catalog.yml    # catalog metadata (enables snakedeploy)
-├── Dockerfile, docker-compose.yml, apptainer.def, run_pipeline.sh, create_envs.smk, DOCKER.md
+├── Dockerfile, docker-compose.yml, apptainer.def, apptainer-gpu.def, run_pipeline.sh, create_envs.smk, DOCKER.md
 ├── data/                              # vendor output directories (you provide)
 ├── results/, logs/                    # outputs
 └── images/rulegraph.svg
@@ -265,18 +307,22 @@ snakemake_scstseq/                     # Snakemake Workflow Catalog layout
 
 - **Unit tests** (`pytest tests/ -q`): schema validity and shipped configs,
   sample-sheet checks, the QC threshold logic (drop-reason precedence,
-  `0` = off), and both platform readers on in-memory vendor directories.
-  They need only anndata / numpy / pandas / scipy / h5py / pyyaml / jsonschema.
+  `0` = off), both platform readers on in-memory vendor directories, the
+  ALRA implementation on a planted low-rank matrix with dropouts, and the
+  imputation helpers. They need only anndata / numpy / pandas / scipy / h5py
+  / pyyaml / jsonschema.
 - **Executable test case** ([`.test/`](.test)): a deterministic generator
   plants the truth — two spatial domains with disjoint marker programs, a
   known number of low-quality cells and high-mito spots — for one Xenium and
   two Visium sections, and `assert_outputs.py` asserts the **values** that
   come out (exact kept counts and drop reasons, domain-pure Leiden clusters,
-  domain markers first in Moran's I, self-enriched neighborhoods).
+  domain markers first in Moran's I, self-enriched neighborhoods, and for
+  every imputation method a lower zero fraction of the domain markers with
+  their domain separation and observed-vs-imputed correlation preserved).
 
   ```bash
   python .test/make_testdata.py
-  snakemake -s workflow/Snakefile -d .test --sdm conda --cores 2
+  snakemake -s workflow/Snakefile -d .test --sdm conda --cores 2 all impute_all
   python .test/assert_outputs.py
   ```
 - **CI** (`.github/workflows/ci.yml`): a `static` job (snakefmt, pytest, dry
@@ -308,6 +354,11 @@ into a release PR that bumps `version.txt`, `CITATION.cff` and
   `spatial.moran.n_perms` (`0` keeps the analytic p-values only) and
   `spatial.nhood_enrichment.n_perms`, or restrict Moran's I to HVGs by
   enabling `processing.xenium.hvg`.
+- **Imputation memory** — the imputed matrix is dense (cells × imputed
+  genes, float32). A 500k-cell Xenium section with a 5k panel needs ~10 GB
+  per method; use `imputation.genes: hvg` with `processing.xenium.hvg: true`
+  to limit the genes, and give `threads.impute` the memory-rich node. scVI
+  on CPU is slow for large sections; use the GPU container.
 
 ## Citation
 
@@ -322,6 +373,9 @@ If you use this workflow in your research, please cite it via the
 - **Leiden**: Traag, V.A., Waltman, L. and van Eck, N.J. (2019). From Louvain to Leiden: guaranteeing well-connected communities. Scientific Reports, 9, 5233.
 - **UMAP**: McInnes, L., Healy, J. and Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for dimension reduction. arXiv:1802.03426.
 - **anndata**: Virshup, I. et al. (2024). anndata: Access and store annotated data matrices. Journal of Open Source Software, 9(101), 4371.
+- **MAGIC** (if `imputation.methods` includes `magic`): van Dijk, D. et al. (2018). Recovering gene interactions from single-cell data using data diffusion. Cell, 174(3), 716–729.
+- **ALRA** (if `alra`): Linderman, G.C. et al. (2022). Zero-preserving imputation of single-cell RNA-seq data. Nature Communications, 13, 192.
+- **scVI** (if `scvi`): Lopez, R. et al. (2018). Deep generative modeling for single-cell transcriptomics. Nature Methods, 15, 1053–1058.
 
 ## License
 

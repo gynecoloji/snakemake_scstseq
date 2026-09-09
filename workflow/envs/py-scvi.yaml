@@ -1,0 +1,20 @@
+# scVI imputation environment (CPU). Used only by the opt-in `impute_scvi`
+# rule: trains an scVI model per section and exports get_normalized_expression
+# as the imputed matrix. Kept separate from py-scst because PyTorch is heavy.
+#
+# The CUDA build lives in py-scvi-gpu.yaml (baked into scstseq-pipeline-gpu.sif
+# by apptainer-gpu.def, selected with imputation.scvi.gpu: true).
+name: py-scvi
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - scvi-tools=1.4
+  - pytorch-cpu
+  - anndata>=0.10
+  - numpy
+  - pandas
+  - scipy
+  - h5py
+  - matplotlib-base

@@ -31,6 +31,16 @@ from make_testdata import N_GENES, SAMPLES, expected_kept, n_cells  # noqa: E402
 TEST = Path(__file__).resolve().parent
 RESULTS = TEST / "results"
 
+
+def imputation_methods():
+    """The methods listed in .test/config/config.yaml (stdlib parse: the
+    `methods:` line inside the imputation block)."""
+    for line in (TEST / "config" / "config.yaml").read_text().splitlines():
+        if line.strip().startswith("methods:"):
+            inner = line.split("[", 1)[1].split("]", 1)[0]
+            return [m.strip().strip('"').strip("'") for m in inner.split(",") if m.strip()]
+    return []
+
 FAILURES = []
 
 
@@ -128,6 +138,51 @@ def check_spatial(sample):
         check("spatial_connectivities" in f["obsp"], f"{sample}: final h5ad carries the spatial graph")
 
 
+def _h5ad_names(group):
+    """obs/var names from an h5ad group: a plain string dataset, or (pandas >= 3
+    string dtype) a nullable-string-array group with `values` + `mask`."""
+    node = group[group.attrs["_index"]]
+    arr = node["values"][()] if isinstance(node, h5py.Group) else node[()]
+    return np.array([x.decode() if isinstance(x, bytes) else str(x) for x in arr])
+
+
+def check_imputation(sample, method):
+    stats = pd.read_csv(RESULTS / "imputed" / f"{sample}.{method}_gene_stats.tsv", sep="\t", index_col=0)
+    markers = stats[stats.index.str.startswith(("DOMA_", "DOMB_"))]
+    check(len(markers) >= 10, f"{sample}/{method}: >= 10 domain markers among the imputed genes ({len(markers)})")
+    check(
+        markers["pct_zero_imputed"].mean() < markers["pct_zero_observed"].mean(),
+        f"{sample}/{method}: zero fraction of domain markers drops ({markers['pct_zero_observed'].mean():.1f}% -> {markers['pct_zero_imputed'].mean():.1f}%)",
+    )
+    r = float(markers["pearson_r"].median())
+    check(r > 0.3, f"{sample}/{method}: median observed-vs-imputed r over domain markers > 0.3 (got {r:.3f})")
+
+    t = truth(sample)
+    with h5py.File(RESULTS / "imputed" / f"{sample}.{method}.h5ad", "r") as f:
+        check("imputed" in f["layers"], f"{sample}/{method}: h5ad carries layers/imputed")
+        genes = _h5ad_names(f["var"])
+        cells = _h5ad_names(f["obs"])
+        imp = f["layers"]["imputed"][()]
+    dom = t.reindex(cells)["domain"].to_numpy()
+    is_a = dom == "A"
+    a_genes = np.array([g.startswith("DOMA_") for g in genes])
+    b_genes = np.array([g.startswith("DOMB_") for g in genes])
+    if a_genes.any() and b_genes.any():
+        sep_a = imp[is_a][:, a_genes].mean() - imp[~is_a][:, a_genes].mean()
+        sep_b = imp[~is_a][:, b_genes].mean() - imp[is_a][:, b_genes].mean()
+        check(sep_a > 0 and sep_b > 0, f"{sample}/{method}: imputed domain markers still separate the domains (A {sep_a:.2f}, B {sep_b:.2f})")
+    check(np.isfinite(imp).all() and (imp >= 0).all(), f"{sample}/{method}: imputed values are finite and non-negative")
+
+
+def check_imputation_summary(methods):
+    p = RESULTS / "imputed" / "imputation_summary.tsv"
+    check(p.exists(), "imputation summary exists")
+    if p.exists():
+        df = pd.read_csv(p, sep="\t")
+        check(len(df) == len(SAMPLES) * len(methods), f"imputation summary has {len(SAMPLES) * len(methods)} rows (got {len(df)})")
+        check(set(df["method"]) == set(methods), f"imputation summary covers {sorted(methods)}")
+
+
 def check_report():
     p = RESULTS / "report" / "scstseq_report.html"
     check(p.exists(), "report exists")
@@ -146,6 +201,14 @@ def main():
         check_markers(s, majority)
         check_spatial(s)
     check_report()
+    methods = imputation_methods()
+    if methods and (RESULTS / "imputed").exists():
+        for s in SAMPLES:
+            for m in methods:
+                check_imputation(s, m)
+        check_imputation_summary(methods)
+    elif methods:
+        print("[skip] imputation outputs not present (run `snakemake -d .test impute_all` to test them)")
     if FAILURES:
         print(f"\n{len(FAILURES)} assertion(s) FAILED:")
         for m in FAILURES:

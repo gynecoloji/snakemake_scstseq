@@ -1,0 +1,86 @@
+# GPU variant of the spatial-transcriptomics workflow image: identical to
+# apptainer.def except the scVI imputation env is the CUDA build (py-scvi-gpu
+# instead of py-scvi). Pair it with `imputation.scvi.gpu: true` in config.yaml
+# and run with --nv on a GPU node:
+#   module load apptainer
+#   apptainer build --fakeroot scstseq-pipeline-gpu.sif apptainer-gpu.def   # run from the repo root
+#   apptainer run --nv scstseq-pipeline-gpu.sif -s workflow/Snakefile --cores 16 impute_all
+#
+# Ships Snakemake plus the pre-built per-rule conda env (py-scst: scanpy +
+# squidpy) at /opt/wf-conda, and runs with --use-conda. Vendor output
+# directories are NOT baked in: bind-mount your project at runtime.
+
+Bootstrap: docker
+From: condaforge/miniforge3:latest
+
+%files
+    workflow /workflow/
+    config /workflow/
+    tests /workflow/
+    create_envs.smk /workflow/
+    version.txt /workflow/
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    export WF_CONDA_PREFIX=/opt/wf-conda
+    export WF_CONDA_ENVS=py-scst,py-scvi-gpu
+
+    # When built rootless (user not in /etc/subuid, so no real --fakeroot), apt's
+    # privilege-dropping sandbox fails ("setgroups/seteuid: Operation not permitted").
+    # Disable it so apt runs as the namespace root. Harmless under a real-root build.
+    printf 'APT::Sandbox::User "root";\n' > /etc/apt/apt.conf.d/01-no-sandbox
+
+    apt-get update
+    apt-get install -y --no-install-recommends git procps ca-certificates
+    rm -rf /var/lib/apt/lists/*
+
+    conda config --system --set channel_priority flexible
+    conda tos accept --override-channels \
+        --channel https://repo.anaconda.com/pkgs/main \
+        --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
+
+    # Snakemake driver in its OWN env (the miniforge base pins Python 3.13, but
+    # snakemake-minimal 9.3.2 needs <3.13). pandas is imported by common.smk at
+    # parse time.
+    mamba create -y -n driver -c conda-forge -c bioconda \
+        python=3.12 snakemake-minimal=9.3.2 pandas
+    mamba clean -afy
+    export PATH=/opt/conda/envs/driver/bin:$PATH
+
+    # Pre-build the per-rule conda env INTO the image, keyed by env-file content
+    # so it is reused at runtime via --conda-prefix.
+    cd /workflow
+    snakemake -s create_envs.smk --use-conda --conda-create-envs-only \
+        --conda-frontend mamba --conda-prefix "$WF_CONDA_PREFIX" --cores 1
+    mamba clean -afy
+    rm -rf /workflow/build /workflow/.snakemake
+
+%environment
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+    export WF_CONDA_PREFIX=/opt/wf-conda
+    export PATH=/opt/conda/envs/driver/bin:$PATH
+
+%runscript
+    exec snakemake --use-conda --conda-frontend mamba \
+        --conda-prefix /opt/wf-conda "$@"
+
+%labels
+    org.opencontainers.image.title scstseq-snakemake-gpu
+    org.opencontainers.image.description Spatial transcriptomics (Xenium + Visium) QC, clustering and spatial statistics Snakemake workflow, CUDA scVI env, --use-conda
+    org.opencontainers.image.source https://github.com/gynecoloji/snakemake_scstseq
+
+%help
+    GPU variant of the spatial-transcriptomics workflow image (CUDA scVI env
+    for the opt-in imputation stage). Use with imputation.scvi.gpu: true and
+    run with --nv on a GPU node:
+      apptainer run --nv scstseq-pipeline-gpu.sif -s workflow/Snakefile --cores 16 impute_all
+
+    Run from your project directory (Apptainer auto-mounts the CWD):
+      apptainer run --nv scstseq-pipeline-gpu.sif -s workflow/Snakefile --cores 16 impute_all
+      apptainer run scstseq-pipeline.sif -s workflow/Snakefile --cores 16 qc_all
+      apptainer run scstseq-pipeline.sif -s workflow/Snakefile --cores 1 -n
+
+    Vendor output directories must be present under data/ and listed in
+    config/samples.csv with their platform (see config/README.md).

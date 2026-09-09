@@ -2,8 +2,9 @@
 #
 # Provides: scanpy (loading, QC, normalization, PCA/neighbors/Leiden/UMAP,
 # marker genes), squidpy (spatial neighbors graph, neighborhood enrichment,
-# Moran's I), anndata/h5py/pyarrow (10x HDF5 + parquet/CSV readers), and
-# matplotlib/seaborn for the plots. Every `script:` rule runs in this env.
+# Moran's I), magic-impute (the opt-in MAGIC imputation), anndata/h5py/pyarrow
+# (10x HDF5 + parquet/CSV readers), and matplotlib/seaborn for the plots. Every
+# `script:` rule except impute_scvi (py-scvi.yaml) runs in this env.
 #
 # Pinned by major.minor (not build string) so the solve stays reproducible but
 # still picks up bug-fix releases. conda-forge + bioconda only (Bioconda's
@@ -28,3 +29,13 @@ dependencies:
   - matplotlib-base
   - seaborn
   - pyyaml
+  # magic-impute is installed by py-scst.post-deploy.sh (pip, --no-deps): the
+  # bioconda build depends on a conda `scprep` that is years behind, and the
+  # PyPI scprep pins pandas < 2.1, which has no Python 3.12 wheel — neither
+  # can be solved next to scanpy 1.11, while MAGIC itself runs fine on the
+  # current stack. These are the runtime deps of that pure-Python chain.
+  - pip
+  - decorator
+  - packaging
+  - future
+  - deprecated

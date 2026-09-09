@@ -139,6 +139,49 @@ properties:
         required: [n_perms, n_top, plot_top]
     required: [xenium, visium, nhood_enrichment, moran]
 
+  imputation:
+    type: object
+    description: Opt-in imputation of the measured genes (`snakemake impute_all`); one output set per method, all on the log-normalized scale.
+    properties:
+      methods:
+        type: array
+        items: { type: string, enum: [magic, alra, scvi] }
+        uniqueItems: true
+        default: [magic, alra]
+        description: "Methods to run: magic (kNN diffusion), alra (low-rank approximation), scvi (scvi-tools; own conda env). Empty list disables the stage."
+      genes:
+        type: string
+        enum: [hvg, all]
+        default: hvg
+        description: Impute the highly variable genes only (falls back to all genes when none were selected, i.e. Xenium) or every gene.
+      plot_top: { type: integer, minimum: 0, default: 6, description: "Top spatially variable genes drawn observed vs imputed (0 = no panels)." }
+      magic:
+        type: object
+        properties:
+          knn:   { type: integer, minimum: 2, default: 5, description: "Neighbours per cell for the diffusion graph." }
+          t:     { type: integer, minimum: 1, default: 3, description: "Diffusion time; higher smooths more." }
+          n_pca: { type: integer, minimum: 2, default: 100, description: "PCs the graph is built on (capped at n_genes - 1; skipped when the panel has <= 100 genes)." }
+          decay: { type: number, minimum: 0, default: 1, description: "Alpha-decay kernel exponent." }
+        required: [knn, t, n_pca, decay]
+      alra:
+        type: object
+        properties:
+          k:        { type: integer, minimum: 0, default: 0, description: "Rank of the approximation; 0 = chosen from the singular-value noise floor." }
+          k_max:    { type: integer, minimum: 2, default: 100, description: "Largest rank considered when k = 0." }
+          quantile: { type: number, minimum: 0, maximum: 0.5, default: 0.001, description: "Per-gene thresholding quantile (ALRA default 0.001)." }
+        required: [k, k_max, quantile]
+      scvi:
+        type: object
+        properties:
+          n_latent:     { type: integer, minimum: 1, default: 10 }
+          n_layers:     { type: integer, minimum: 1, default: 1 }
+          n_hidden:     { type: integer, minimum: 1, default: 128 }
+          max_epochs:   { type: integer, minimum: 0, default: 0, description: "Training epochs; 0 = the scvi-tools heuristic from the number of cells." }
+          library_size: { type: number, minimum: 0, default: 0, description: "Imputed counts per cell before log1p; 0 = the platform's target_sum, else the median observed depth." }
+          gpu:          { type: boolean, default: false, description: "Train in the CUDA env (py-scvi-gpu); needs the GPU container or a GPU node." }
+        required: [n_latent, n_layers, n_hidden, max_epochs, library_size, gpu]
+    required: [methods, genes, plot_top, magic, alra, scvi]
+
   report:
     type: object
     properties:
@@ -157,6 +200,8 @@ properties:
       cluster_markers: { type: integer, minimum: 1, default: 2 }
       spatial_stats:   { type: integer, minimum: 1, default: 4 }
       build_report:    { type: integer, minimum: 1, default: 1 }
-    required: [load_sample, qc_filter, qc_plots, qc_summary, process_sample, cluster_markers, spatial_stats, build_report]
+      impute:          { type: integer, minimum: 1, default: 4 }
+      impute_summary:  { type: integer, minimum: 1, default: 1 }
+    required: [load_sample, qc_filter, qc_plots, qc_summary, process_sample, cluster_markers, spatial_stats, build_report, impute, impute_summary]
 
-required: [samples_table, paths, genome, qc, processing, spatial, report, threads]
+required: [samples_table, paths, genome, qc, processing, spatial, imputation, report, threads]

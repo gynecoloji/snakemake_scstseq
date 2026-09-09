@@ -1,8 +1,10 @@
 # Running the spatial-transcriptomics workflow in a container
 
 The pipeline runs its rules in **one conda environment** (`workflow/envs/py-scst.yaml`:
-scanpy + squidpy). The image therefore ships **Snakemake + that pre-built env**
-and runs Snakemake with `--use-conda`.
+scanpy + squidpy, with magic-impute pip-installed by `py-scst.post-deploy.sh`),
+plus a second one for the opt-in scVI imputation (`py-scvi.yaml`, PyTorch on
+CPU). The image therefore ships
+**Snakemake + both pre-built envs** and runs Snakemake with `--use-conda`.
 
 Vendor output directories are **not** baked into the image — you mount your
 project directory at run time. **Apptainer is the primary path** (this workflow
@@ -47,6 +49,18 @@ export APPTAINER_TMPDIR=/big/scratch/apptainer_tmp
 export APPTAINER_CACHEDIR=/big/scratch/apptainer_cache
 ```
 
+**GPU variant (scVI imputation on a GPU node):** `apptainer-gpu.def` is the
+same image with the CUDA scVI env (`py-scvi-gpu`) instead of the CPU one. Pair
+it with `imputation.scvi.gpu: true` in `config.yaml` and run with `--nv`:
+
+```bash
+apptainer build --fakeroot scstseq-pipeline-gpu.sif apptainer-gpu.def
+apptainer run --nv scstseq-pipeline-gpu.sif -s workflow/Snakefile --cores 16 impute_all
+```
+
+On Slurm, request a GPU (e.g. `--gres=gpu:1`). Everything except `impute_scvi`
+still runs on CPU inside the same image.
+
 **Docker:**
 
 ```bash
@@ -70,6 +84,7 @@ The image `ENTRYPOINT` is `snakemake --use-conda --conda-frontend mamba
 apptainer run scstseq-pipeline.sif -s workflow/Snakefile --cores 1 -n         # dry run first
 apptainer run scstseq-pipeline.sif -s workflow/Snakefile --cores 16           # everything
 apptainer run scstseq-pipeline.sif -s workflow/Snakefile --cores 16 qc_all    # one stage
+apptainer run scstseq-pipeline.sif -s workflow/Snakefile --cores 16 impute_all # opt-in imputation (CPU)
 ```
 
 **Docker** — the helper script or compose:

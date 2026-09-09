@@ -111,6 +111,33 @@ spatial:
     plot_top: 6              # top SVGs drawn on the section
 
 # ---------------------------------------------------------------------------
+# Imputation of the measured genes (OPT-IN: `snakemake impute_all`).
+# Denoises / fills in dropouts of the genes already in the matrix; it does NOT
+# impute genes missing from a Xenium panel. One output set per method under
+# results/imputed/, all on the log-normalized scale so they compare directly.
+# ---------------------------------------------------------------------------
+imputation:
+  methods: ["magic", "alra"]   # any of magic | alra | scvi (each runs; [] = stage disabled)
+  genes: "hvg"                 # hvg | all — hvg falls back to all when no HVGs were selected (Xenium)
+  plot_top: 6                  # top spatially variable genes drawn observed vs imputed
+  magic:                       # diffusion on the expression kNN graph (van Dijk 2018)
+    knn: 5                     # neighbours per cell
+    t: 3                       # diffusion time (higher = smoother)
+    n_pca: 100                 # PCs for the graph (capped at n_genes - 1; none when <= 100 genes)
+    decay: 1                   # alpha-decay kernel exponent
+  alra:                        # adaptively-thresholded low-rank approximation (Linderman 2022)
+    k: 0                       # rank; 0 = choose from the singular-value noise floor
+    k_max: 100                 # largest rank considered when k = 0
+    quantile: 0.001            # per-gene thresholding quantile
+  scvi:                        # scvi-tools model per section (Lopez 2018); own conda env
+    n_latent: 10
+    n_layers: 1
+    n_hidden: 128
+    max_epochs: 0              # 0 = scvi-tools heuristic from the number of cells
+    library_size: 0            # imputed counts per cell before log1p; 0 = the platform's target_sum, else the median observed depth
+    gpu: false                 # use the CUDA env (py-scvi-gpu): needs the GPU container / a GPU node
+
+# ---------------------------------------------------------------------------
 # Self-contained cross-sample HTML report (part of the default target)
 # ---------------------------------------------------------------------------
 report:
@@ -128,3 +155,5 @@ threads:
   cluster_markers: 2
   spatial_stats:   4
   build_report:    1
+  impute:          4
+  impute_summary:  1
